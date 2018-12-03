@@ -27,8 +27,10 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 import io.netty.buffer.ByteBuf;
@@ -59,6 +61,7 @@ import io.netty.handler.codec.http.multipart.DefaultHttpDataFactory;
 import io.netty.handler.codec.http.multipart.HttpDataFactory;
 import io.netty.handler.codec.http.multipart.HttpPostRequestEncoder;
 import io.netty.handler.stream.ChunkedWriteHandler;
+import io.netty.util.AsciiString;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import org.reactivestreams.Publisher;
@@ -101,6 +104,7 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 	boolean started;
 
 	boolean redirectable;
+	BiPredicate<HttpClientRequest, HttpClientResponse> followRedirectPredicate;
 
 	HttpClientOperations(HttpClientOperations replaced) {
 		super(replaced);
@@ -110,6 +114,7 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 		this.nettyRequest = replaced.nettyRequest;
 		this.responseState = replaced.responseState;
 		this.redirectable = replaced.redirectable;
+		this.followRedirectPredicate = replaced.followRedirectPredicate;
 		this.requestHeaders = replaced.requestHeaders;
 		this.cookieEncoder = replaced.cookieEncoder;
 		this.cookieDecoder = replaced.cookieDecoder;
@@ -233,6 +238,10 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 		this.redirectable = redirectable;
 	}
 
+	public void followRedirectPredicate(BiPredicate<HttpClientRequest, HttpClientResponse> predicate) {
+		this.followRedirectPredicate = predicate;
+	}
+
 	@Override
 	protected void onInboundCancel() {
 		if (isInboundDisposed()){
@@ -296,7 +305,15 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 
 	@Override
 	public boolean isFollowRedirect() {
-		return redirectable && redirectedFrom.length <= MAX_REDIRECTS;
+		return (redirectable ||
+				(followRedirectPredicate != null && followRedirectPredicate.test(this, this))) &&
+				redirectedFrom.length <= MAX_REDIRECTS;
+	}
+
+	boolean isFollowRedirect(AsciiString code) {
+		return ((FOLLOW_REDIRECT_CODES.matcher(code).matches() && isFollowRedirect()) ||
+				(followRedirectPredicate != null && followRedirectPredicate.test(this, this))) &&
+				redirectedFrom.length <= MAX_REDIRECTS;
 	}
 
 	@Override
@@ -538,9 +555,9 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 	}
 
 	final boolean notRedirected(HttpResponse response) {
-		int code = response.status()
-		                   .code();
-		if ((code == 301 || code == 302) && isFollowRedirect()) {
+		AsciiString code = response.status()
+		                           .codeAsText();
+		if (isFollowRedirect(code)) {
 			if (log.isDebugEnabled()) {
 				log.debug(format(channel(), "Received redirect location: {}"),
 						response.headers()
@@ -723,6 +740,7 @@ class HttpClientOperations extends HttpOperations<NettyInbound, NettyOutbound>
 			Loggers.getLogger(HttpClientOperations.class);
 	static final AttributeKey<Supplier<String>[]> REDIRECT_ATTR_KEY  =
 			AttributeKey.newInstance("httpRedirects");
+	static final Pattern FOLLOW_REDIRECT_CODES = Pattern.compile("30[1278]");
 
 	static final class PrematureCloseException extends IOException {
 

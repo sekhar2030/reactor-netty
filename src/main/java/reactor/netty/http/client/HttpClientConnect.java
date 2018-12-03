@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -428,6 +429,8 @@ final class HttpClientConnect extends HttpClient {
 		final ClientCookieEncoder cookieEncoder;
 		final ClientCookieDecoder cookieDecoder;
 
+		final BiPredicate<HttpClientRequest, HttpClientResponse> followRedirectPredicate;
+
 		final ProxyProvider proxyProvider;
 
 		volatile UriEndpoint        activeURI;
@@ -439,6 +442,7 @@ final class HttpClientConnect extends HttpClient {
 			this.method = configuration.method;
 			this.compress = configuration.acceptGzip;
 			this.followRedirect = configuration.followRedirect;
+			this.followRedirectPredicate = configuration.followRedirectPredicate;
 			this.chunkedTransfer = configuration.chunkedTransfer;
 			this.cookieEncoder = configuration.cookieEncoder;
 			this.cookieDecoder = configuration.cookieDecoder;
@@ -528,6 +532,7 @@ final class HttpClientConnect extends HttpClient {
 				}
 
 				ch.followRedirect(followRedirect);
+				ch.followRedirectPredicate(followRedirectPredicate);
 
 				if (Objects.equals(method, HttpMethod.GET) ||
 						Objects.equals(method, HttpMethod.HEAD) ||

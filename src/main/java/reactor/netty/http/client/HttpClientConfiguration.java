@@ -17,6 +17,7 @@
 package reactor.netty.http.client;
 
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
@@ -58,6 +59,8 @@ final class HttpClientConfiguration {
 	ClientCookieEncoder cookieEncoder = ClientCookieEncoder.STRICT;
 	ClientCookieDecoder cookieDecoder = ClientCookieDecoder.STRICT;
 
+	BiPredicate<HttpClientRequest, HttpClientResponse> followRedirectPredicate = null;
+
 	Function<Mono<HttpClientConfiguration>, Mono<HttpClientConfiguration>> deferredConf                   = null;
 
 	BiFunction<? super HttpClientRequest, ? super NettyOutbound, ? extends Publisher<Void>>
@@ -72,6 +75,7 @@ final class HttpClientConfiguration {
 		this.followRedirect = from.followRedirect;
 		this.cookieEncoder = from.cookieEncoder;
 		this.cookieDecoder = from.cookieDecoder;
+		this.followRedirectPredicate = from.followRedirectPredicate;
 		this.chunkedTransfer = from.chunkedTransfer;
 		this.baseUrl = from.baseUrl;
 		this.headers = from.headers;
@@ -167,7 +171,9 @@ final class HttpClientConfiguration {
 
 
 	static final Function<Bootstrap, Bootstrap> MAP_REDIRECT = b -> {
-		getOrCreate(b).followRedirect = true;
+		HttpClientConfiguration conf = getOrCreate(b);
+		conf.followRedirect = true;
+		conf.followRedirectPredicate = null;
 		return b;
 	};
 
@@ -268,6 +274,13 @@ final class HttpClientConfiguration {
 		HttpClientConfiguration conf = getOrCreate(b);
 		conf.cookieEncoder = encoder;
 		conf.cookieDecoder = decoder;
+		return b;
+	}
+
+	static Bootstrap followRedirectPredicate(Bootstrap b, BiPredicate<HttpClientRequest, HttpClientResponse> predicate) {
+		HttpClientConfiguration conf = getOrCreate(b);
+		conf.followRedirectPredicate = predicate;
+		conf.followRedirect = false;
 		return b;
 	}
 
